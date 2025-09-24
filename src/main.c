@@ -183,10 +183,10 @@ port_config_t parse_port_argument(const char *port_str) {
 // Generic port scan function that calls the appropriate scanner
 int scan_port_generic(const char *ip, int port, int timeout_sec, scan_type_t scan_type, int verbose) {
     int result;
-    
+
     // Set quiet mode based on verbose flag
     g_quiet_mode = !verbose;
-    
+
     switch (scan_type) {
         case SCAN_SYN:
             result = syn_scan(ip, port);
@@ -259,19 +259,19 @@ int scan_port(const char *ip, int port, int timeout_sec) {
 // Thread function for individual port scanning
 void* scan_thread_individual(void *arg) {
     thread_data_t *data = (thread_data_t*)arg;
-    
+
     // Add scan delay if specified (for rate limiting)
     if (data->scan_type != SCAN_CONNECT) {
         usleep(data->thread_id * 1000); // Stagger initial timing
     }
-    
+
     int result = scan_port_generic(data->target_ip, data->port, TIMEOUT_SECONDS, data->scan_type, data->banner_config ? data->banner_config->verbose : 0);
 
     if (result == 1) { // Port is open
         pthread_mutex_lock(data->mutex);
         data->open_ports[(*data->open_count)++] = data->port;
         printf("  Port %d is OPEN\n", data->port);
-        
+
         // Grab banner if enabled
         if (data->grab_banners && data->banner_collection && data->banner_config) {
             banner_result_t banner_result;
@@ -282,10 +282,10 @@ void* scan_thread_individual(void *arg) {
                 }
             }
         }
-        
+
         pthread_mutex_unlock(data->mutex);
     }
-    
+
     return NULL;
 }
 
@@ -471,7 +471,7 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
         queues[i].thread_id = i;
         queues[i].scan_type = scan_type;
         queues[i].verbose = verbose;
-        
+
         pthread_create(&threads[i], NULL, scan_thread_lockfree, &queues[i]);
     }
 
@@ -487,7 +487,7 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
             for (int j = 0; j < results->count; j++) {
                 int port = results->open_ports[j];
                 printf("Port %d is OPEN\n", port);
-                
+
                 // Grab banner if enabled
                 if (grab_banners && banner_collection && banner_config) {
                     banner_result_t banner_result;
@@ -533,7 +533,7 @@ void scan_ports_from_array(const char *ip, const int *port_array, int port_count
         queues[i].thread_id = i;
         queues[i].scan_type = scan_type;
         queues[i].verbose = verbose;
-        
+
         pthread_create(&threads[i], NULL, scan_thread_lockfree, &queues[i]);
     }
 
@@ -549,7 +549,7 @@ void scan_ports_from_array(const char *ip, const int *port_array, int port_count
             for (int j = 0; j < results->count; j++) {
                 int port = results->open_ports[j];
                 printf("Port %d is OPEN\n", port);
-                
+
                 // Grab banner if enabled
                 if (grab_banners && banner_collection && banner_config) {
                     banner_result_t banner_result;
@@ -623,6 +623,7 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
             verbose = 1;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            printf("SPEAR - PORT SCANNER\n");
             printf("Usage: %s [OPTIONS] <target_ip_or_hostname> <port_specification> [threads]\n", argv[0]);
             printf("\nScan Options:\n");
             printf("  -sT, --tcp-connect          TCP Connect scan (default)\n");
@@ -660,8 +661,8 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] != '-' && arg_count < 4) {
             // Check if this is not a flag value
-            // Skip next argument  
-            if (i == 1 || argv[i-1][0] != '-' || 
+            // Skip next argument
+            if (i == 1 || argv[i-1][0] != '-' ||
                 (strcmp(argv[i-1], "-bt") != 0 && strcmp(argv[i-1], "--banner-timeout") != 0 &&
                  strcmp(argv[i-1], "-o") != 0 && strcmp(argv[i-1], "--output") != 0 &&
                  strcmp(argv[i-1], "-d") != 0 && strcmp(argv[i-1], "--database") != 0 &&
@@ -730,10 +731,10 @@ int main(int argc, char *argv[]) {
         printf("Warning: %s scan requires root privileges. Falling back to Connect scan.\n", scan_names[scan_type]);
         scan_type = SCAN_CONNECT;
     }
-    
+
     // Set global quiet mode
     g_quiet_mode = !verbose;
-    
+
     // Warn about raw socket scan limitations
     if (scan_type != SCAN_CONNECT && verbose) {
         printf("Note: Raw socket scans use hybrid verification for better accuracy.\n");
@@ -747,7 +748,7 @@ int main(int argc, char *argv[]) {
         printf("Target IP: %s\n", target_ip);
         printf("Scan Type: %s\n", scan_names[scan_type]);
     }
-    
+
     if (port_config.is_default_list) {
         port_list_info_t port_list = get_port_list(port_config.list_type);
         if (verbose) {
@@ -756,7 +757,7 @@ int main(int argc, char *argv[]) {
             printf("Starting scan...\n");
         }
         // Scanning quietly - only show open ports
-        
+
         // Use lock-free approach for default port lists (they're typically large)
         scan_ports_from_array(target_ip, port_list.ports, port_list.count, threads, grab_banners, banner_collection, banner_config, scan_type, verbose);
     } else {
@@ -773,7 +774,7 @@ int main(int argc, char *argv[]) {
 
         // Choose threading approach based on port range size
         int total_ports = port_config.end_port - port_config.start_port + 1;
-        
+
         if (total_ports <= MAX_THREADS) {
             // Small range: one thread per port
             scan_ports_individual_threads(target_ip, port_config.start_port, port_config.end_port, grab_banners, banner_collection, banner_config, scan_type, verbose);
@@ -791,7 +792,7 @@ int main(int argc, char *argv[]) {
             printf("\nBanner Summary:\n");
             print_banner_summary(banner_collection);
         }
-        
+
         // Export results if requested
         if (output_file) {
             if (verbose) printf("Exporting banner results to: %s\n", output_file);
@@ -801,7 +802,7 @@ int main(int argc, char *argv[]) {
                 printf("Failed to export banner results\n");
             }
         }
-        
+
         if (db_file) {
             if (verbose) printf("Saving banner results to database: %s\n", db_file);
             if (save_collection_to_database(db_file, banner_collection) == 0) {
