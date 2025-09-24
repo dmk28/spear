@@ -11,6 +11,7 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <stdatomic.h>
+#include <fcntl.h>
 #define ACK_SCAN
 #include "../scanners/syn/scanner.h"
 #include "../scanners/ack/scanner.h"
@@ -29,6 +30,9 @@
 #define RAW_SCAN_TIMEOUT 5
 #define MAX_THREAD_LOCAL_RESULTS 1000
 #define RAW_SCAN_RETRIES 2
+
+// Global quiet flag for raw socket scanners
+int g_quiet_mode = 1;
 
 // Scan types
 typedef enum {
@@ -174,47 +178,29 @@ port_config_t parse_port_argument(const char *port_str) {
     return config;
 }
 
+
+
 // Generic port scan function that calls the appropriate scanner
 int scan_port_generic(const char *ip, int port, int timeout_sec, scan_type_t scan_type, int verbose) {
     int result;
     
-    // Redirect stdout to /dev/null if not verbose for raw scans
-    FILE *original_stdout = NULL;
-    if (!verbose && scan_type != SCAN_CONNECT) {
-        original_stdout = stdout;
-        stdout = fopen("/dev/null", "w");
-    }
+    // Set quiet mode based on verbose flag
+    g_quiet_mode = !verbose;
     
     switch (scan_type) {
         case SCAN_SYN:
             result = syn_scan(ip, port);
             if (result == 1) {
-                if (stdout != original_stdout) {
-                    fclose(stdout);
-                    stdout = original_stdout;
-                }
                 return 1; // Definitely open (got SYN-ACK)
             } else if (result == 0) {
-                if (stdout != original_stdout) {
-                    fclose(stdout);
-                    stdout = original_stdout;
-                }
                 return 0; // Definitely closed (got RST)
             } else {
-                if (stdout != original_stdout) {
-                    fclose(stdout);
-                    stdout = original_stdout;
-                }
                 // No response - could be filtered or open
                 // For stealth scanning, verify with connect scan
                 return scan_port(ip, port, 1); // Quick connect test
             }
         case SCAN_ACK:
             result = ack_scan(ip, port);
-            if (stdout != original_stdout) {
-                fclose(stdout);
-                stdout = original_stdout;
-            }
             if (result == 1) {
                 // Got ACK response - port is unfiltered, verify if open
                 return scan_port(ip, port, timeout_sec);
@@ -228,10 +214,6 @@ int scan_port_generic(const char *ip, int port, int timeout_sec, scan_type_t sca
         case SCAN_XMAS:
             // XMAS scan - no response usually means open|filtered
             perform_random_xmas_scan(ip, port, 2);
-            if (stdout != original_stdout) {
-                fclose(stdout);
-                stdout = original_stdout;
-            }
             // XMAS interpretation: no RST = potentially open
             // Verify with connect scan for accuracy
             result = scan_port(ip, port, timeout_sec);
@@ -326,7 +308,7 @@ void* scan_thread_queue(void* arg) {
         if (scan_port_generic(queue->target_ip, port, TIMEOUT_SECONDS, queue->scan_type, 0)) {
             pthread_mutex_lock(queue->result_mutex);
             queue->open_ports[(*queue->open_count)++] = port;
-            printf("  Port %d is OPEN\n", port);
+            printf("Port %d is OPEN\n", port);
             pthread_mutex_unlock(queue->result_mutex);
         }
     }
@@ -343,6 +325,7 @@ void scan_ports_individual_threads(const char *ip, int start_port, int end_port,
     int open_count = 0;
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+    // Scanning quietly - progress messages only in verbose mode
     if (verbose) printf("Starting individual thread scan of %d ports...\n", port_count);
 
     // Create threads
@@ -371,6 +354,8 @@ void scan_ports_individual_threads(const char *ip, int start_port, int end_port,
         for (int i = 0; i < open_count; i++) {
             printf("  Port %d\n", open_ports[i]);
         }
+    } else if (open_count == 0) {
+        printf("No open ports found.\n");
     }
 
     free(threads);
@@ -407,7 +392,7 @@ void scan_ports_thread_pool(const char *ip, int start_port, int end_port, int nu
         ports[i] = start_port + i;
     }
 
-    printf("Starting thread pool scan with %d threads for %d ports...\n", num_threads, port_count);
+    if (verbose) printf("Starting thread pool scan with %d threads for %d ports...\n", num_threads, port_count);
 
     // Create worker threads
     for (int i = 0; i < num_threads; i++) {
@@ -424,6 +409,8 @@ void scan_ports_thread_pool(const char *ip, int start_port, int end_port, int nu
         for (int i = 0; i < open_count; i++) {
             printf("  Port %d\n", open_ports[i]);
         }
+    } else if (open_count == 0) {
+        printf("No open ports found.\n");
     }
 
     free(threads);
@@ -449,7 +436,6 @@ void* scan_thread_lockfree(void* arg) {
         if (scan_port_generic(queue->target_ip, port, TIMEOUT_SECONDS, queue->scan_type, queue->verbose)) {
             if (local_results.count < MAX_THREAD_LOCAL_RESULTS) {
                 local_results.open_ports[local_results.count++] = port;
-                printf("  Port %d is OPEN\n", port);
             }
         }
     }
@@ -474,7 +460,7 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
     // Initialize shared atomic counter
     atomic_int shared_index = ATOMIC_VAR_INIT(0);
 
-    printf("Starting lock-free scan with %d threads for %d ports...\n", num_threads, port_count);
+    if (verbose) printf("Starting lock-free scan with %d threads for %d ports...\n", num_threads, port_count);
 
     // Create worker threads - all share the same atomic counter
     for (int i = 0; i < num_threads; i++) {
@@ -500,7 +486,7 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
             total_open += results->count;
             for (int j = 0; j < results->count; j++) {
                 int port = results->open_ports[j];
-                printf("  Port %d is OPEN\n", port);
+                printf("Port %d is OPEN\n", port);
                 
                 // Grab banner if enabled
                 if (grab_banners && banner_collection && banner_config) {
@@ -517,7 +503,11 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
         }
     }
 
-    if (verbose) printf("Lock-free scan complete. Found %d total open ports.\n", total_open);
+    if (verbose) {
+        printf("Lock-free scan complete. Found %d total open ports.\n", total_open);
+    } else if (total_open == 0) {
+        printf("No open ports found.\n");
+    }
 
     free(threads);
     free(ports);
@@ -558,8 +548,8 @@ void scan_ports_from_array(const char *ip, const int *port_array, int port_count
             total_open += results->count;
             for (int j = 0; j < results->count; j++) {
                 int port = results->open_ports[j];
-                printf("  Port %d is OPEN\n", port);
-
+                printf("Port %d is OPEN\n", port);
+                
                 // Grab banner if enabled
                 if (grab_banners && banner_collection && banner_config) {
                     banner_result_t banner_result;
@@ -575,7 +565,11 @@ void scan_ports_from_array(const char *ip, const int *port_array, int port_count
         }
     }
 
-    if (verbose) printf("Array scan complete. Found %d total open ports.\n", total_open);
+    if (verbose) {
+        printf("Array scan complete. Found %d total open ports.\n", total_open);
+    } else if (total_open == 0) {
+        printf("No open ports found.\n");
+    }
 
     free(threads);
     free(queues);
@@ -737,8 +731,11 @@ int main(int argc, char *argv[]) {
         scan_type = SCAN_CONNECT;
     }
     
+    // Set global quiet mode
+    g_quiet_mode = !verbose;
+    
     // Warn about raw socket scan limitations
-    if (scan_type != SCAN_CONNECT) {
+    if (scan_type != SCAN_CONNECT && verbose) {
         printf("Note: Raw socket scans use hybrid verification for better accuracy.\n");
         if (scan_delay > 0) {
             printf("Scan delay: %dms between probes\n", scan_delay);
@@ -757,9 +754,8 @@ int main(int argc, char *argv[]) {
             printf("Using port list: %s (%d ports)\n", port_list.description, port_list.count);
             printf("Threads: %d\n", threads);
             printf("Starting scan...\n");
-        } else {
-            printf("Scanning %s with %s (%d ports):\n", target_ip, port_list.description, port_list.count);
         }
+        // Scanning quietly - only show open ports
         
         // Use lock-free approach for default port lists (they're typically large)
         scan_ports_from_array(target_ip, port_list.ports, port_list.count, threads, grab_banners, banner_collection, banner_config, scan_type, verbose);
@@ -772,13 +768,8 @@ int main(int argc, char *argv[]) {
             }
             printf("Threads: %d\n", threads);
             printf("Starting scan...\n");
-        } else {
-            if (port_config.is_range) {
-                printf("Scanning %s ports %d-%d:\n", target_ip, port_config.start_port, port_config.end_port);
-            } else {
-                printf("Scanning %s port %d:\n", target_ip, port_config.start_port);
-            }
         }
+        // Scanning quietly - only show open ports
 
         // Choose threading approach based on port range size
         int total_ports = port_config.end_port - port_config.start_port + 1;

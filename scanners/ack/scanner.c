@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #include "../util/packet_creation.h"
+#include "scanner.h"
 
 #define TIMEOUT_SEC 2
 
@@ -79,7 +80,7 @@ int ack_scan(const char *target_ip, int port) {
         return -1;
     }
 
-    printf("ACK packet sent to %s:%d\n", target_ip, port);
+    // Packet sent silently
 
     char recv_buffer[4096];
     struct sockaddr_in recv_addr;
@@ -95,22 +96,26 @@ int ack_scan(const char *target_ip, int port) {
         if (recv_addr.sin_addr.s_addr == target_addr.sin_addr.s_addr && ntohs(recv_tcp->source) == port) {
 
             if (recv_tcp->ack == 1) {
-                printf("Port %d is open\n", port);
+                if (!g_quiet_mode) {
+                    printf("Port %d is open\n", port);
+                }
                 result =1;
             } else if (recv_tcp->rst == 1) {
-                printf("Port %d is closed\n", port);
+                // Port is closed - don't print anything
                 result =0;
             } else {
-                printf("Port %d gave unknown answer\n", port);
+                if (!g_quiet_mode) {
+                    printf("Port %d gave unknown answer\n", port);
+                }
                 result =-1;
             }
         } else {
-            printf("Port %d: No response from target (timeout)\n", port);
+            // No response - likely filtered, don't print anything
             result = -1;
         }
     } else {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            printf("Port %d: No response from target (timeout)\n", port);
+            // Timeout - don't print anything for filtered ports
         } else {
             perror("recvfrom failed");
 
@@ -131,8 +136,7 @@ int ack_scan(const char *target_ip, int port) {
 int ack_scan_range(const char *target_ip, int start_port, int end_port) {
     int open_count = 0;
 
-    printf("Starting ACK scan on %s for ports %d-%d\n", target_ip, start_port, end_port);
-    printf("Note: This scan requires root privileges\n\n");
+    // Scanning quietly - only show open ports
 
     for (int port = start_port; port <= end_port; port++) {
         int result = ack_scan(target_ip, port);
@@ -144,6 +148,10 @@ int ack_scan_range(const char *target_ip, int start_port, int end_port) {
         usleep(10000); // 10ms delay
     }
 
-    printf("\nScan complete. Found %d open ports.\n", open_count);
+    if (open_count > 0) {
+        printf("\nScan complete. Found %d open ports.\n", open_count);
+    } else {
+        printf("No open ports found.\n");
+    }
     return open_count;
 }

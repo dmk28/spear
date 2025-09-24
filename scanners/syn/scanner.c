@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #include "../util/packet_creation.h"
+#include "scanner.h"
 
 #define TIMEOUT_SEC 2
 
@@ -79,7 +80,7 @@ int syn_scan(const char *target_ip, int port) {
         return -1;
     }
 
-    printf("SYN packet sent to %s:%d\n", target_ip, port);
+    // Packet sent silently
 
     // Try to receive response
     char recv_buffer[4096];
@@ -98,22 +99,26 @@ int syn_scan(const char *target_ip, int port) {
             ntohs(recv_tcp->source) == port) {
 
             if (recv_tcp->syn && recv_tcp->ack) {
-                printf("Port %d is OPEN (SYN-ACK received)\n", port);
+                if (!g_quiet_mode) {
+                    printf("Port %d is OPEN (SYN-ACK received)\n", port);
+                }
                 result = 1; // Port is open
             } else if (recv_tcp->rst) {
-                printf("Port %d is CLOSED (RST received)\n", port);
+                // Port is closed - don't print anything
                 result = 0; // Port is closed
             } else {
-                printf("Port %d: Unexpected response\n", port);
+                if (!g_quiet_mode) {
+                    printf("Port %d: Unexpected response\n", port);
+                }
                 result = -1;
             }
         } else {
-            printf("Port %d: No response from target (timeout)\n", port);
+            // No response - likely filtered, don't print anything
             result = -1; // No response or filtered
         }
     } else {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            printf("Port %d: No response (timeout - likely filtered)\n", port);
+            // Timeout - don't print anything for filtered ports
         } else {
             perror("recvfrom failed");
         }
@@ -131,8 +136,7 @@ int syn_scan(const char *target_ip, int port) {
 int syn_scan_range(const char *target_ip, int start_port, int end_port) {
     int open_count = 0;
 
-    printf("Starting SYN scan on %s for ports %d-%d\n", target_ip, start_port, end_port);
-    printf("Note: This scan requires root privileges\n\n");
+    // Scanning quietly - only show open ports
 
     for (int port = start_port; port <= end_port; port++) {
         int result = syn_scan(target_ip, port);
@@ -144,6 +148,10 @@ int syn_scan_range(const char *target_ip, int start_port, int end_port) {
         usleep(10000); // 10ms delay
     }
 
-    printf("\nScan complete. Found %d open ports.\n", open_count);
+    if (open_count > 0) {
+        printf("\nScan complete. Found %d open ports.\n", open_count);
+    } else {
+        printf("No open ports found.\n");
+    }
     return open_count;
 }

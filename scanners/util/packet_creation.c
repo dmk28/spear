@@ -4,12 +4,68 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <ifaddrs.h>
 
 #include <netinet/tcp.h>
 #include <time.h>
 #include <sys/time.h>
 
 #define PACKET_SIZE 4096
+
+// Global variables for tracking our source IP/port for response matching
+char g_source_ip[16];
+int g_source_port;
+
+// Function to get the appropriate source IP for a destination
+int get_source_ip(const char *dest_ip, char *source_ip) {
+    int sock;
+    struct sockaddr_in dest_addr, src_addr;
+    socklen_t addr_len = sizeof(src_addr);
+    
+    // Create a UDP socket for route discovery
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("socket");
+        return -1;
+    }
+    
+    // Set up destination address
+    memset(&dest_addr, 0, sizeof(dest_addr));
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(53); // Use DNS port for route discovery
+    
+    if (inet_pton(AF_INET, dest_ip, &dest_addr.sin_addr) <= 0) {
+        fprintf(stderr, "Invalid destination IP address: %s\n", dest_ip);
+        close(sock);
+        return -1;
+    }
+    
+    // Connect to determine the source IP that would be used for this destination
+    if (connect(sock, (struct sockaddr*)&dest_addr, sizeof(dest_addr)) < 0) {
+        perror("connect");
+        close(sock);
+        return -1;
+    }
+    
+    // Get the local address that was assigned
+    if (getsockname(sock, (struct sockaddr*)&src_addr, &addr_len) < 0) {
+        perror("getsockname");
+        close(sock);
+        return -1;
+    }
+    
+    // Convert to string format
+    if (inet_ntop(AF_INET, &src_addr.sin_addr, source_ip, 16) == NULL) {
+        perror("inet_ntop");
+        close(sock);
+        return -1;
+    }
+    
+    close(sock);
+    return 0;
+}
 
 // Checksum calculation function
 unsigned short checksum(void *b, int len) {
@@ -48,6 +104,16 @@ int create_packet(const char *target, int port, int timeout, int flags, char **p
     char *packet;
     struct iphdr *iph;
     struct tcphdr *tcph;
+    char source_ip[16];
+    
+    // Get proper source IP for this destination
+    if (get_source_ip(target, source_ip) != 0) {
+        fprintf(stderr, "Failed to determine source IP for target %s\n", target);
+        return -1;
+    }
+    
+    // Store source IP globally for response matching
+    strcpy(g_source_ip, source_ip);
     
     // Allocate memory for the packet
     packet = malloc(PACKET_SIZE);
@@ -68,6 +134,9 @@ int create_packet(const char *target, int port, int timeout, int flags, char **p
         return -1;
     }
 
+    // Generate a random source port in the high range to avoid conflicts
+    g_source_port = 32768 + (rand() % 32768);
+
     // Fill in the IP Header
     iph->ihl = 5;
     iph->version = 4;
@@ -78,11 +147,11 @@ int create_packet(const char *target, int port, int timeout, int flags, char **p
     iph->ttl = 255;
     iph->protocol = IPPROTO_TCP;
     iph->check = 0; // Will be calculated later
-    iph->saddr = inet_addr("127.0.0.1"); // Source IP (should be your machine's IP)
+    iph->saddr = inet_addr(source_ip); // Use proper source IP
     iph->daddr = addr.sin_addr.s_addr;
 
     // Fill in the TCP Header
-    tcph->source = htons(rand() % 65535);
+    tcph->source = htons(g_source_port);
     tcph->dest = htons(port);
     tcph->seq = htonl(rand() % 4294967295U);
     tcph->ack_seq = 0;

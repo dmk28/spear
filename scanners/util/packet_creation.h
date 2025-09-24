@@ -3,6 +3,13 @@
 
 #include <stddef.h>
 
+// Global variables for tracking our source IP/port for response matching
+extern char g_source_ip[16];
+extern int g_source_port;
+
+// Function to get the appropriate source IP for a destination
+int get_source_ip(const char *dest_ip, char *source_ip);
+
 // Function to create a raw TCP packet
 // Parameters:
 //   target: Target IP address as string

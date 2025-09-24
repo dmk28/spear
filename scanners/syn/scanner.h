@@ -1,6 +1,9 @@
 #ifndef SCANNER_H
 #define SCANNER_H
 
+// Global quiet mode flag
+extern int g_quiet_mode;
+
 // Function to perform a SYN scan on a single port
 // Returns: 1 if port is open, 0 if closed, -1 on error or filtered
 int syn_scan(const char *target_ip, int port);
