@@ -22,6 +22,8 @@ typedef struct {
 
 // Callback function for SQLite query results
 static int result_callback(void *data, int argc, char **argv, char **col_names) {
+    (void)argc; // Suppress unused parameter warning
+    (void)col_names; // Suppress unused parameter warning
     query_options_t *opts = (query_options_t*)data;
     
     if (strcmp(opts->output_format, "table") == 0) {
@@ -76,6 +78,7 @@ void print_csv_header() {
 
 // Build SQL query based on options
 void build_query(query_options_t *opts, char *query, int query_size) {
+    (void)query_size; // Suppress unused parameter warning
     strcpy(query, "SELECT id, host, port, service, banner, timestamp, success FROM banners");
     
     int has_where = 0;
@@ -208,6 +211,7 @@ int show_statistics(const char *db_file) {
 int search_banners(const char *db_file, const char *search_term, query_options_t *opts) {
     sqlite3 *db;
     char *err_msg = 0;
+    (void)err_msg; // Suppress unused variable warning
     int rc;
     
     rc = sqlite3_open_v2(db_file, &db, SQLITE_OPEN_READONLY, NULL);

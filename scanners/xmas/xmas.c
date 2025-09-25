@@ -61,8 +61,8 @@ int send_tcp_packet(char *target_ip, int port, xmas current_flag) {
     dest_addr.sin_port = htons(port);
     dest_addr.sin_addr.s_addr = inet_addr(target_ip);
 
-    struct iphdr *ip_header = (struct iphdr *)malloc(sizeof(struct iphdr));
-    struct tcphdr *tcp_header = (struct tcphdr *)malloc(sizeof(struct tcphdr));
+    struct iphdr *ip_header = (struct iphdr *)calloc(1, sizeof(struct iphdr));
+    struct tcphdr *tcp_header = (struct tcphdr *)calloc(1, sizeof(struct tcphdr));
 
     ip_header->ihl = 5;
     ip_header->version = 4;

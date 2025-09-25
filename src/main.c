@@ -125,7 +125,7 @@ port_config_t parse_port_argument(const char *port_str) {
 
     // Check if it's a default port list name
     port_list_type_t list_type = parse_port_list_name(port_str);
-    if (list_type != -1) {
+    if (list_type != PORT_LIST_INVALID) {
         config.is_default_list = true;
         config.list_type = list_type;
         config.is_valid = true;

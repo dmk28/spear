@@ -299,6 +299,7 @@ int grab_banner_with_probe(const char *host, int port, const char *probe, banner
     
     if (bytes_read > 0) {
         strncpy(result->banner, buffer, MAX_BANNER_SIZE - 1);
+        result->banner[MAX_BANNER_SIZE - 1] = '\0';
         clean_banner_text(result->banner);
         result->success = 1;
         return 0;
@@ -384,7 +385,8 @@ int export_results_to_csv(const banner_collection_t *collection, const char *fil
         
         // Escape banner text for CSV
         char escaped_banner[MAX_BANNER_SIZE * 2];
-        char *src = result->banner, *dst = escaped_banner;
+        const char *src = result->banner;
+        char *dst = escaped_banner;
         
         while (*src && dst < escaped_banner + sizeof(escaped_banner) - 2) {
             if (*src == '"') {
@@ -427,7 +429,8 @@ int export_results_to_json(const banner_collection_t *collection, const char *fi
         
         // Escape banner text for JSON
         char escaped_banner[MAX_BANNER_SIZE * 2];
-        char *src = result->banner, *dst = escaped_banner;
+        const char *src = result->banner;
+        char *dst = escaped_banner;
         
         while (*src && dst < escaped_banner + sizeof(escaped_banner) - 2) {
             if (*src == '"') {

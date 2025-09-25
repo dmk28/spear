@@ -149,7 +149,7 @@ void print_available_port_lists(void) {
 
 // Parse port list name from string
 port_list_type_t parse_port_list_name(const char *name) {
-    if (!name) return -1;
+    if (!name) return PORT_LIST_INVALID;
     
     if (strcmp(name, "quick") == 0) return PORT_LIST_QUICK;
     if (strcmp(name, "top10") == 0) return PORT_LIST_TOP10;
@@ -157,5 +157,5 @@ port_list_type_t parse_port_list_name(const char *name) {
     if (strcmp(name, "top100") == 0) return PORT_LIST_TOP100;
     if (strcmp(name, "top1000") == 0) return PORT_LIST_TOP1000;
     
-    return -1; // Invalid name
+    return PORT_LIST_INVALID; // Invalid name
 }

@@ -94,6 +94,7 @@ unsigned short checksum(void *b, int len) {
 }
 
 int create_packet(const char *target, int port, int timeout, int flags, char **packet_data, size_t *packet_size) {
+    (void)timeout; // Suppress unused parameter warning
     static int initialized = 0;
     if (!initialized) {
         srand(time(NULL));

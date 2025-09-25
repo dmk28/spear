@@ -26,6 +26,7 @@ extern int is_valid_ip(const char *ip_str) {
 }
 
 extern char* retrieve_ip_address(struct sockaddr *addr, socklen_t addrlen) {
+    (void)addrlen; // Suppress unused parameter warning
     static char ipstr[INET6_ADDRSTRLEN]; // Use larger buffer for IPv6
     void *addr_ptr;
 

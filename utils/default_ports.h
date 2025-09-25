@@ -17,6 +17,7 @@ extern const int QUICK_SCAN_PORTS[QUICK_SCAN_PORTS_SIZE];
 
 // Enumeration for port list types
 typedef enum {
+    PORT_LIST_INVALID = -1,
     PORT_LIST_QUICK = 0,
     PORT_LIST_TOP10,
     PORT_LIST_TOP50,

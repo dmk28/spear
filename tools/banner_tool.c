@@ -102,7 +102,10 @@ int load_targets_from_file(const char* filename, target_t* targets, int max_targ
         char* colon = strchr(line, ':');
         if (colon) {
             *colon = '\0';
-            strncpy(targets[count].host, line, MAX_HOST_SIZE - 1);
+            size_t len = strlen(line);
+            if (len >= MAX_HOST_SIZE) len = MAX_HOST_SIZE - 1;
+            memcpy(targets[count].host, line, len);
+            targets[count].host[len] = '\0';
             targets[count].port = atoi(colon + 1);
             
             if (targets[count].port > 0 && targets[count].port <= 65535) {
@@ -110,12 +113,18 @@ int load_targets_from_file(const char* filename, target_t* targets, int max_targ
             }
         } else {
             // Assume common ports if none specified
-            strncpy(targets[count].host, line, MAX_HOST_SIZE - 1);
+            size_t len = strlen(line);
+            if (len >= MAX_HOST_SIZE) len = MAX_HOST_SIZE - 1;
+            memcpy(targets[count].host, line, len);
+            targets[count].host[len] = '\0';
             
             // Add common service ports
             int common_ports[] = {21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 8080, -1};
             for (int i = 0; common_ports[i] != -1 && count < max_targets; i++) {
-                strncpy(targets[count].host, line, MAX_HOST_SIZE - 1);
+                len = strlen(line);
+                if (len >= MAX_HOST_SIZE) len = MAX_HOST_SIZE - 1;
+                memcpy(targets[count].host, line, len);
+                targets[count].host[len] = '\0';
                 targets[count].port = common_ports[i];
                 count++;
             }
