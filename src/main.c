@@ -104,6 +104,13 @@ typedef struct {
     int thread_id;
 } thread_results_t;
 
+// Comparison function for sorting ports in numerical order
+int port_compare(const void *a, const void *b) {
+    int port_a = *(const int*)a;
+    int port_b = *(const int*)b;
+    return port_a - port_b;
+}
+
 int scan_port(const char *ip, int port, int timeout_sec);
 // Function to parse port argument (single port, range, or default list)
 port_config_t parse_port_argument(const char *port_str) {
@@ -270,18 +277,7 @@ void* scan_thread_individual(void *arg) {
     if (result == 1) { // Port is open
         pthread_mutex_lock(data->mutex);
         data->open_ports[(*data->open_count)++] = data->port;
-        printf("  Port %d is OPEN\n", data->port);
-
-        // Grab banner if enabled
-        if (data->grab_banners && data->banner_collection && data->banner_config) {
-            banner_result_t banner_result;
-            if (grab_banner(data->target_ip, data->port, &banner_result, data->banner_config->timeout) == 0) {
-                add_banner_result(data->banner_collection, &banner_result);
-                if (data->banner_config->verbose) {
-                    printf("    [+] Banner: %s\n", banner_result.service);
-                }
-            }
-        }
+        // Don't print here - we'll print in sorted order later
 
         pthread_mutex_unlock(data->mutex);
     }
@@ -347,6 +343,28 @@ void scan_ports_individual_threads(const char *ip, int start_port, int end_port,
     // Wait for all threads to complete
     for (int i = 0; i < port_count; i++) {
         pthread_join(threads[i], NULL);
+    }
+
+    // Sort the open ports in numerical order
+    if (open_count > 0) {
+        qsort(open_ports, open_count, sizeof(int), port_compare);
+        
+        // Print results in order and grab banners
+        for (int i = 0; i < open_count; i++) {
+            int port = open_ports[i];
+            printf("Port %d is OPEN\n", port);
+            
+            // Grab banner if enabled
+            if (grab_banners && banner_collection && banner_config) {
+                banner_result_t banner_result;
+                if (grab_banner(ip, port, &banner_result, banner_config->timeout) == 0) {
+                    add_banner_result(banner_collection, &banner_result);
+                    if (banner_config->verbose) {
+                        printf("    [+] Banner: %s\n", banner_result.service);
+                    }
+                }
+            }
+        }
     }
 
     if (verbose) {
@@ -475,7 +493,8 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
         pthread_create(&threads[i], NULL, scan_thread_lockfree, &queues[i]);
     }
 
-    // Wait for all threads and collect results
+    // Collect all results from all threads first
+    int *all_open_ports = malloc(port_count * sizeof(int));
     int total_open = 0;
 
     for (int i = 0; i < num_threads; i++) {
@@ -483,23 +502,33 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
         pthread_join(threads[i], (void**)&results);
 
         if (results) {
-            total_open += results->count;
+            // Add this thread's results to the master list
             for (int j = 0; j < results->count; j++) {
-                int port = results->open_ports[j];
-                printf("Port %d is OPEN\n", port);
+                all_open_ports[total_open++] = results->open_ports[j];
+            }
+            free(results);
+        }
+    }
 
-                // Grab banner if enabled
-                if (grab_banners && banner_collection && banner_config) {
-                    banner_result_t banner_result;
-                    if (grab_banner(ip, port, &banner_result, banner_config->timeout) == 0) {
-                        add_banner_result(banner_collection, &banner_result);
-                        if (banner_config->verbose) {
-                            printf("    [+] Banner: %s\n", banner_result.service);
-                        }
+    // Sort all open ports numerically
+    if (total_open > 0) {
+        qsort(all_open_ports, total_open, sizeof(int), port_compare);
+        
+        // Print results in sorted order and grab banners
+        for (int i = 0; i < total_open; i++) {
+            int port = all_open_ports[i];
+            printf("Port %d is OPEN\n", port);
+
+            // Grab banner if enabled
+            if (grab_banners && banner_collection && banner_config) {
+                banner_result_t banner_result;
+                if (grab_banner(ip, port, &banner_result, banner_config->timeout) == 0) {
+                    add_banner_result(banner_collection, &banner_result);
+                    if (banner_config->verbose) {
+                        printf("    [+] Banner: %s\n", banner_result.service);
                     }
                 }
             }
-            free(results);
         }
     }
 
@@ -509,6 +538,7 @@ void scan_ports_lockfree(const char *ip, int start_port, int end_port, int num_t
         printf("No open ports found.\n");
     }
 
+    free(all_open_ports);
     free(threads);
     free(ports);
     free(queues);
@@ -537,7 +567,8 @@ void scan_ports_from_array(const char *ip, const int *port_array, int port_count
         pthread_create(&threads[i], NULL, scan_thread_lockfree, &queues[i]);
     }
 
-    // Wait for all threads and collect results
+    // Collect all results from all threads first
+    int *all_open_ports = malloc(port_count * sizeof(int));
     int total_open = 0;
 
     for (int i = 0; i < num_threads; i++) {
@@ -545,23 +576,33 @@ void scan_ports_from_array(const char *ip, const int *port_array, int port_count
         pthread_join(threads[i], (void**)&results);
 
         if (results) {
-            total_open += results->count;
+            // Add this thread's results to the master list
             for (int j = 0; j < results->count; j++) {
-                int port = results->open_ports[j];
-                printf("Port %d is OPEN\n", port);
+                all_open_ports[total_open++] = results->open_ports[j];
+            }
+            free(results);
+        }
+    }
 
-                // Grab banner if enabled
-                if (grab_banners && banner_collection && banner_config) {
-                    banner_result_t banner_result;
-                    if (grab_banner(ip, port, &banner_result, banner_config->timeout) == 0) {
-                        add_banner_result(banner_collection, &banner_result);
-                        if (banner_config->verbose) {
-                            printf("    [+] Banner: %s\n", banner_result.service);
-                        }
+    // Sort all open ports numerically
+    if (total_open > 0) {
+        qsort(all_open_ports, total_open, sizeof(int), port_compare);
+        
+        // Print results in sorted order and grab banners
+        for (int i = 0; i < total_open; i++) {
+            int port = all_open_ports[i];
+            printf("Port %d is OPEN\n", port);
+
+            // Grab banner if enabled
+            if (grab_banners && banner_collection && banner_config) {
+                banner_result_t banner_result;
+                if (grab_banner(ip, port, &banner_result, banner_config->timeout) == 0) {
+                    add_banner_result(banner_collection, &banner_result);
+                    if (banner_config->verbose) {
+                        printf("    [+] Banner: %s\n", banner_result.service);
                     }
                 }
             }
-            free(results);
         }
     }
 
@@ -571,6 +612,7 @@ void scan_ports_from_array(const char *ip, const int *port_array, int port_count
         printf("No open ports found.\n");
     }
 
+    free(all_open_ports);
     free(threads);
     free(queues);
 }
