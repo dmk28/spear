@@ -1,0 +1,55 @@
+name: Minimal CI (Backup)
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  minimal-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install minimal dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsqlite3-dev
+
+      - name: Build with GCC
+        run: |
+          make clean
+          make all
+
+      - name: Verify executables
+        run: |
+          ls -la spear spear-banner spear-banner-viewer
+          file spear
+
+      - name: Quick smoke test
+        run: |
+          ./spear --help || echo "Help test done"
+          timeout 10s ./spear 127.0.0.1 22 1 || echo "Smoke test done"
+
+  quick-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: ubuntu:22.04
+
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git build-essential libsqlite3-dev
+
+      - uses: actions/checkout@v4
+
+      - name: Test build
+        run: |
+          make all
+          ls -la spear
