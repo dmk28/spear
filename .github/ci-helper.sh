@@ -180,6 +180,18 @@ check_dependencies() {
     fi
 }
 
+# Function to check GitHub Actions versions
+check_actions() {
+    print_status $BLUE "🔧 Checking GitHub Actions versions..."
+
+    if [ -x ".github/check-actions.sh" ]; then
+        ./.github/check-actions.sh
+    else
+        print_status $YELLOW "⚠️ Action checker script not found or not executable"
+        print_status $YELLOW "Run: chmod +x .github/check-actions.sh"
+    fi
+}
+
 # Function to show help
 show_help() {
     echo "Spear CI Helper Script"
@@ -191,6 +203,7 @@ show_help() {
     echo "  cancel     - Cancel running workflows (requires GITHUB_TOKEN)"
     echo "  build      - Test local build"
     echo "  deps       - Check build dependencies"
+    echo "  actions    - Check GitHub Actions versions"
     echo "  help       - Show this help message"
     echo
     echo "Environment variables:"
@@ -199,6 +212,7 @@ show_help() {
     echo "Examples:"
     echo "  $0 status          # Check workflow status"
     echo "  $0 build           # Test build locally"
+    echo "  $0 actions         # Check for deprecated actions"
     echo "  GITHUB_TOKEN=... $0 cancel  # Cancel running workflows"
 }
 
@@ -221,6 +235,9 @@ case "${1:-status}" in
         ;;
     "deps"|"d")
         check_dependencies
+        ;;
+    "actions"|"a")
+        check_actions
         ;;
     "help"|"h"|"-h"|"--help")
         show_help

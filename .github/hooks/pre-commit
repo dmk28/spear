@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Pre-commit hook to check GitHub Actions versions
+# Install with: cp .github/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_status() {
+    local color=$1
+    local message=$2
+    echo -e "${color}${message}${NC}"
+}
+
+# Check if we're modifying any workflow files
+workflow_files=$(git diff --cached --name-only | grep -E "^\.github/workflows/.*\.ya?ml$" || true)
+
+if [ -z "$workflow_files" ]; then
+    # No workflow files modified, skip checks
+    exit 0
+fi
+
+print_status $BLUE "🔍 Pre-commit: Checking GitHub Actions in modified workflow files..."
+
+# Check if action checker exists
+if [ ! -x ".github/check-actions.sh" ]; then
+    print_status $YELLOW "⚠️ Action checker not found, skipping GitHub Actions version check"
+    exit 0
+fi
+
+# Run action checker
+if ./.github/check-actions.sh; then
+    print_status $GREEN "✅ All GitHub Actions versions look good!"
+    exit 0
+else
+    print_status $RED "❌ Found deprecated GitHub Actions in workflow files"
+    print_status $YELLOW "💡 Fix deprecated actions before committing:"
+    print_status $NC "   - Update action versions in workflow files"
+    print_status $NC "   - Run: ./.github/check-actions.sh for details"
+    print_status $NC "   - Or skip this check with: git commit --no-verify"
+    exit 1
+fi
